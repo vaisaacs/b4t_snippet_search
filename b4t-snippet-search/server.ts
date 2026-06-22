@@ -46,7 +46,8 @@ app.post("/api/bill4time/sync", async (req, res) => {
     const fetchTable = async (endpoint: string) => {
       const url = `https://secure.bill4time.com/b4t-api/${apiKey}/v2/${endpoint}`;
       try {
-        const response = await fetch(url, { headers, signal: AbortSignal.timeout(12000) });
+        // Increase timeout to 60s to handle large payloads (+10k records)
+        const response = await fetch(url, { headers, signal: AbortSignal.timeout(60000) });
         if (!response.ok) {
           throw new Error(`Endpoint ${endpoint} returned status ${response.status}`);
         }
@@ -86,6 +87,12 @@ app.post("/api/bill4time/sync", async (req, res) => {
 
     // 1. Initialize Clients
     rawClients.forEach((c: any) => {
+      // Filter strictly for 'Active' clients as per schema requirements
+      const cStatus = (c.clientStatus || c.status || '').toLowerCase();
+      if (cStatus !== 'active') {
+        return;
+      }
+
       const idStr = String(c.internalClientID || c.id || '');
       if (!idStr) return;
       
