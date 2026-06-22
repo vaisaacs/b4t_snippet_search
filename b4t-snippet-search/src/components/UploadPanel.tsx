@@ -13,9 +13,6 @@ export default function UploadPanel({ onDataLoaded, currentCount }: UploadPanelP
   const [dragActive, setDragActive] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | null; text: string }>({ type: null, text: '' });
   const [showSqlGuide, setShowSqlGuide] = useState(false);
-  const [syncMode, setSyncMode] = useState<'csv' | 'api'>('csv');
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleTextParse = () => {
@@ -95,41 +92,6 @@ export default function UploadPanel({ onDataLoaded, currentCount }: UploadPanelP
     }
   };
 
-  // Live Sync request against Express server
-  const handleLiveSassSync = async () => {
-    setIsSyncing(true);
-    setStatusMessage({ type: null, text: '' });
-    
-    try {
-      const response = await fetch('/api/bill4time/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ apiKey: apiKeyInput })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Server rejected the live API synchronizer call');
-      }
-
-      onDataLoaded(data);
-      setStatusMessage({
-        type: 'success',
-        text: `Successfully downloaded from Bill4Time APIs! Reconstructed, joined, and loaded ${data.length} client files seamlessly.`
-      });
-    } catch (err: any) {
-      setStatusMessage({
-        type: 'error',
-        text: `API sync pipeline failure: ${err?.message || 'Check firewalls / key authenticity'}`
-      });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const copySqlQuery = () => {
     const sql = `SELECT
     ClientName AS \`Client Name\`,
@@ -193,32 +155,6 @@ ORDER BY ClientName ASC;`;
         </div>
       </div>
 
-      {/* Mode Selectors */}
-      <div className="flex border-b border-slate-100 p-0.5 space-x-1 bg-slate-100/60 rounded-lg max-w-sm">
-        <button
-          type="button"
-          onClick={() => setSyncMode('csv')}
-          className={`flex-1 text-center py-2 text-xs font-bold rounded-md transition ${
-            syncMode === 'csv'
-              ? 'bg-white text-slate-800 shadow-xs'
-              : 'text-slate-500 hover:bg-slate-200/50'
-          }`}
-        >
-          📄 Option A: CRM CSV Loader
-        </button>
-        <button
-          type="button"
-          onClick={() => setSyncMode('api')}
-          className={`flex-1 text-center py-2 text-xs font-bold rounded-md transition ${
-            syncMode === 'api'
-              ? 'bg-white text-slate-800 shadow-xs'
-              : 'text-slate-500 hover:bg-slate-200/50'
-          }`}
-        >
-          ⚡ Option B: Secure Live API Sync
-        </button>
-      </div>
-
       {/* SQL Guide Section */}
       {showSqlGuide && (
         <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 font-mono text-xs text-slate-700 space-y-3 relative">
@@ -262,11 +198,10 @@ ORDER BY ClientName ASC;`;
         </div>
       )}
 
-      {/* Content based on selected mode */}
-      {syncMode === 'csv' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-          {/* Upload Column */}
-          <div
+      {/* Content for CSV Upload */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+        {/* Upload Column */}
+        <div
             onDragEnter={handleDrag}
             onDragOver={handleDrag}
             onDragLeave={handleDrag}
@@ -317,56 +252,6 @@ ORDER BY ClientName ASC;`;
             </button>
           </div>
         </div>
-      ) : (
-        <div className="border border-slate-150 rounded-xl p-5 bg-slate-50/30 space-y-4 animate-fade-in">
-          <div id="api-panel-header" className="flex items-start gap-3">
-            <div className="p-2.5 bg-indigo-100/60 text-indigo-700 rounded-lg mt-0.5">
-              <Key className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="font-bold text-sm text-slate-800 block">Direct API Live Collector</span>
-              <span className="text-xs text-slate-500 block">
-                Connects directly to the official <span className="font-medium text-indigo-600">secure.bill4time.com/b4t-api</span> to reconstruct tables on the fly.
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <div className="md:col-span-2 space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
-                Transient Bill4Time API Key
-              </label>
-              <div className="relative">
-                <input
-                  type="password"
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder="Enter secure API secret to override env defaults..."
-                  className="w-full bg-white border border-slate-200 text-xs font-mono p-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-700"
-                />
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleLiveSassSync}
-              disabled={isSyncing}
-              className={`w-full py-2.5 px-4 font-bold text-xs rounded-lg shadow-sm transition flex items-center justify-center gap-2 ${
-                isSyncing
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-              }`}
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Accessing API & Compiling View...' : 'One-Click Live Sync'}
-            </button>
-          </div>
-
-          <div className="text-[11px] text-slate-500 leading-relaxed bg-white/70 rounded-lg p-3 border border-slate-150">
-            <span className="font-semibold text-slate-700 block mb-1">How it compiles behind the scenes:</span>
-            Our server-side node controller acts as your automated ETL orchestrator. It executes concurrent parallel fetches across five separate endpoints: <span className="font-mono text-xs">/clients</span>, <span className="font-mono text-xs">/projects</span>, <span className="font-mono text-xs">/clientnotes</span>, <span className="font-mono text-xs">/paymentsandbalanceadjustments</span>, and <span className="font-mono text-xs">/invoices</span>. It aggregates them synchronously, and formats the output client records. This is identical to running the SQL query inside your virtual desktop storage.
-          </div>
-        </div>
-      )}
 
       {/* Success/Error Alert Overlay */}
       {statusMessage.type && (

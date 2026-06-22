@@ -312,46 +312,44 @@ export function parseClientCareNotes(rawNotes: string): ClientCareNotesParsed {
 
   if (!rawNotes || !rawNotes.trim()) return result;
 
-  // Split rawNotes by newlines, handling escaped carriage returns automatically
-  const rawLines = rawNotes.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  // Replace " | * " with "\n* " to properly break concatenated notes into distinct lines
+  const normalizedNotes = rawNotes.replace(/\s*\|\s*\*/g, '\n*');
 
-  for (const line of rawLines) {
+  // Split rawNotes by newlines
+  const rawLines = normalizedNotes.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  let currentTier: keyof ClientCareNotesParsed = 't1';
+
+  for (let line of rawLines) {
     // Strip bullet markers (*, -)
     const cleanLine = line.replace(/^[*-\s]+/, '').trim();
+    if (!cleanLine) continue;
+    
     const lowerLine = cleanLine.toLowerCase();
 
-    // Rigorous tier matching regexes checking multiple formats: [T1], [Tier 1], Tier 1, etc.
-    if (/^\[?t(ier\s*)?1\]?/i.test(lowerLine) || lowerLine.startsWith('t1') || lowerLine.startsWith('tier 1')) {
-      const text = cleanLine.replace(/^\[?t(ier\s*)?1\]?:?\s*/i, '').trim();
-      result.t1.push(text);
-    } else if (/^\[?t(ier\s*)?2\]?/i.test(lowerLine) || lowerLine.startsWith('t2') || lowerLine.startsWith('tier 2')) {
-      const text = cleanLine.replace(/^\[?t(ier\s*)?2\]?:?\s*/i, '').trim();
-      result.t2.push(text);
-    } else if (/^\[?t(ier\s*)?3\]?/i.test(lowerLine) || lowerLine.startsWith('t3') || lowerLine.startsWith('tier 3')) {
-      const text = cleanLine.replace(/^\[?t(ier\s*)?3\]?:?\s*/i, '').trim();
-      result.t3.push(text);
-    } else if (/^\[?t(ier\s*)?4\]?/i.test(lowerLine) || lowerLine.startsWith('t4') || lowerLine.startsWith('tier 4')) {
-      const text = cleanLine.replace(/^\[?t(ier\s*)?4\]?:?\s*/i, '').trim();
-      result.t4.push(text);
-    } else if (/^\[?t(ier\s*)?5\]?/i.test(lowerLine) || lowerLine.startsWith('t5') || lowerLine.startsWith('tier 5')) {
-      const text = cleanLine.replace(/^\[?t(ier\s*)?5\]?:?\s*/i, '').trim();
-      result.t5.push(text);
+    // Determine the tier of the line by looking for [TIER X] or [TX] tags.
+    // We check in order of importance, or just search for the specific tier.
+    if (/\[?t(ier\s*)?5\]?/i.test(lowerLine)) {
+      currentTier = 't5';
+      line = cleanLine.replace(/^\[?t(ier\s*)?5\]?:?\s*(-)?\s*/i, '').trim();
+    } else if (/\[?t(ier\s*)?4\]?/i.test(lowerLine)) {
+      currentTier = 't4';
+      line = cleanLine.replace(/^\[?t(ier\s*)?4\]?:?\s*(-)?\s*/i, '').trim();
+    } else if (/\[?t(ier\s*)?3\]?/i.test(lowerLine)) {
+      currentTier = 't3';
+      line = cleanLine.replace(/^\[?t(ier\s*)?3\]?:?\s*(-)?\s*/i, '').trim();
+    } else if (/\[?t(ier\s*)?2\]?/i.test(lowerLine)) {
+      currentTier = 't2';
+      line = cleanLine.replace(/^\[?t(ier\s*)?2\]?:?\s*(-)?\s*/i, '').trim();
+    } else if (/\[?t(ier\s*)?1\]?/i.test(lowerLine)) {
+      currentTier = 't1';
+      line = cleanLine.replace(/^\[?t(ier\s*)?1\]?:?\s*(-)?\s*/i, '').trim();
     } else {
-      // Inline mentions or generic fallback
-      if (lowerLine.includes('t1') || lowerLine.includes('tier 1')) {
-        result.t1.push(cleanLine);
-      } else if (lowerLine.includes('t2') || lowerLine.includes('tier 2')) {
-        result.t2.push(cleanLine);
-      } else if (lowerLine.includes('t3') || lowerLine.includes('tier 3')) {
-        result.t3.push(cleanLine);
-      } else if (lowerLine.includes('t4') || lowerLine.includes('tier 4')) {
-        result.t4.push(cleanLine);
-      } else if (lowerLine.includes('t5') || lowerLine.includes('tier 5')) {
-        result.t5.push(cleanLine);
-      } else {
-        // Fallback standard notes grouped in T1
-        result.t1.push(cleanLine);
-      }
+      line = cleanLine;
+    }
+
+    if (line) {
+       result[currentTier].push(line);
     }
   }
 
