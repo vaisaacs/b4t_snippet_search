@@ -1,6 +1,0 @@
-{
-  "name": "B4T Snippet Search",
-  "description": "A streamlined lookup utility and snippet generator for Bill4Time reports, supporting direct CSV upload and dynamic clipboard templates.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
