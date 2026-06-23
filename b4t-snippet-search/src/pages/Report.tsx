@@ -36,7 +36,7 @@ export default function Report() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Client</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Assigned</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Payments</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Balances</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Terms</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">T-Notes</th>
               </tr>
@@ -56,9 +56,17 @@ export default function Report() {
                     <div>1st: {row.FirstAttorney || '-'}</div>
                     <div>Last: {row.LastAttorney || '-'}</div>
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-gray-500">
-                    <div>Retainer: ${row.RetainerPaid}</div>
-                    <div>Total: ${row.TotalAmountPaid}</div>
+                  <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-xs">
+                    <div>Outstd: ${(row.OutstandingBalance || 0).toLocaleString()}</div>
+                    <div>Unbilled: ${(row.UnbilledBalance || 0).toLocaleString()}</div>
+                    <div className="font-medium">Total: ${(row.TotalBalance || 0).toLocaleString()}</div>
+                    <div>Trust: ${(row.TrustBalance || 0).toLocaleString()}</div>
+                    <div className="mt-1 border-t pt-1 border-gray-100">
+                      Last Pmt: ${(row.LastPayment || 0).toLocaleString()}<br/>
+                      <span className="text-[10px]">
+                        {row.LastPaymentDate ? new Date(row.LastPaymentDate).toLocaleDateString() : '-'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-gray-500">
                     {row.PaymentTerms}

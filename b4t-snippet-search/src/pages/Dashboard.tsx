@@ -3,16 +3,19 @@ import { Users, Briefcase, FileText, Clock } from 'lucide-react';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
-  const [reportData, setReportData] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       fetch('/api/data/dashboard').then(res => res.json()),
-      fetch('/api/data/report').then(res => res.json())
-    ]).then(([statsData, report]) => {
+      fetch('/api/data/clients').then(res => res.json()),
+      fetch('/api/data/projects').then(res => res.json())
+    ]).then(([statsData, clientsData, projectsData]) => {
       setStats(statsData);
-      setReportData(Array.isArray(report) ? report : []);
+      setClients(clientsData || []);
+      setProjects(projectsData || []);
       setLoading(false);
     }).catch(console.error);
   }, []);
@@ -101,62 +104,57 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="space-y-6 overflow-x-auto">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">Snippet Search Report</h2>
-          <p className="text-sm text-gray-500">
-            Advanced Master View with calculated balances, tier notes, and attorney assignments.
-          </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Recent Clients */}
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-200">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Clients</h3>
+          </div>
+          <ul className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+            {clients.slice(0, 50).map((client, i) => (
+              <li key={client.internalClientId || i} className="px-6 py-4 hover:bg-gray-50">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-sm font-medium text-blue-600 truncate">{client.clientName}</p>
+                    <p className="text-sm text-gray-500 truncate">
+                      {client.email || 'No email'} • {client.phone || 'No phone'}
+                    </p>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {client.clientStatus || 'Active'}
+                  </div>
+                </div>
+              </li>
+            ))}
+            {clients.length === 0 && (
+              <li className="px-6 py-4 text-center text-sm text-gray-500">No clients found</li>
+            )}
+          </ul>
         </div>
 
+        {/* Recent Projects */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="overflow-x-auto max-h-[600px]">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Client</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Assigned</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Payments</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Terms</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">T-Notes</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {reportData.slice(0, 100).map((row, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="font-medium text-gray-900 truncate max-w-xs">{row.ClientName}</div>
-                      <div className="text-gray-500">{row.Email}</div>
-                      <div className="text-gray-500">{row.Phone}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-gray-500">
-                      {row.Status}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-gray-500">
-                      <div>1st: {row.FirstAttorney || '-'}</div>
-                      <div>Last: {row.LastAttorney || '-'}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-gray-500">
-                      <div>Retainer: ${row.RetainerPaid}</div>
-                      <div>Total: ${row.TotalAmountPaid}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-gray-500">
-                      {row.PaymentTerms}
-                    </td>
-                    <td className="px-4 py-4 text-gray-500 max-w-md truncate" title={row.T_ClientCare_Notes}>
-                      {row.T_ClientCare_Notes || 'None'}
-                    </td>
-                  </tr>
-                ))}
-                {reportData.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-4 text-center text-gray-500">No report data found.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          <div className="px-6 py-5 border-b border-gray-200">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Projects / Matters</h3>
           </div>
+          <ul className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+            {projects.slice(0, 50).map((project, i) => (
+              <li key={project.internalProjectId || i} className="px-6 py-4 hover:bg-gray-50">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-sm font-medium text-blue-600 truncate">{project.projectName}</p>
+                    <p className="text-sm text-gray-500 truncate">{project.clientName}</p>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {project.status || 'Active'}
+                  </div>
+                </div>
+              </li>
+            ))}
+            {projects.length === 0 && (
+              <li className="px-6 py-4 text-center text-sm text-gray-500">No projects found</li>
+            )}
+          </ul>
         </div>
       </div>
     </div>

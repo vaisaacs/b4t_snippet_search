@@ -2,15 +2,23 @@ export const SNIPPET_SEARCH_QUERY = `
 WITH
 payment_agg AS (
     SELECT
-        p.internal_client_id,
-        SUM(COALESCE(p.pmt_amount, 0)) AS "TotalAmountPaid",
-        (SELECT string_agg('* $' || to_char(p2.pmt_amount, 'FM999,999,999.00'), E'\n') 
-         FROM (SELECT pmt_amount FROM b4t_payments WHERE internal_client_id = p.internal_client_id ORDER BY pmt_date DESC LIMIT 5) p2) AS "Last5Amounts",
-        (SELECT string_agg('* ' || to_char(p2.pmt_date, 'MM/DD/YYYY'), E'\n') 
-         FROM (SELECT pmt_date FROM b4t_payments WHERE internal_client_id = p.internal_client_id ORDER BY pmt_date DESC LIMIT 5) p2) AS "Last5Dates"
-    FROM b4t_payments p
-    WHERE p.pmt_date IS NOT NULL
-    GROUP BY p.internal_client_id
+        internal_client_id,
+        SUM(COALESCE(pmt_amount, 0)) AS "TotalAmountPaid"
+    FROM b4t_payments
+    WHERE pmt_date IS NOT NULL
+    GROUP BY internal_client_id
+),
+payment_last_5 AS (
+    SELECT internal_client_id,
+        string_agg('* $' || to_char(pmt_amount, 'FM999,999,999.00'), E'\n') AS "Last5Amounts",
+        string_agg('* ' || to_char(pmt_date, 'MM/DD/YYYY'), E'\n') AS "Last5Dates"
+    FROM (
+        SELECT internal_client_id, pmt_amount, pmt_date,
+               ROW_NUMBER() OVER(PARTITION BY internal_client_id ORDER BY pmt_date DESC) as rn
+        FROM b4t_payments
+    ) p
+    WHERE rn <= 5
+    GROUP BY internal_client_id
 ),
 first_payment AS (
     SELECT
@@ -19,15 +27,15 @@ first_payment AS (
         pmt_method AS "PaymentType"
     FROM (
         SELECT
-            p.internal_client_id,
-            p.pmt_amount,
-            p.pmt_method,
+            internal_client_id,
+            pmt_amount,
+            pmt_method,
             ROW_NUMBER() OVER (
-                PARTITION BY p.internal_client_id
-                ORDER BY p.pmt_date ASC, p.payment_id ASC
+                PARTITION BY internal_client_id
+                ORDER BY pmt_date ASC, payment_id ASC
             ) AS rn
-        FROM b4t_payments p
-        WHERE p.pmt_amount > 0
+        FROM b4t_payments
+        WHERE pmt_amount > 0
     ) ranked_payments
     WHERE rn = 1
 ),
@@ -39,13 +47,71 @@ invoice_agg AS (
     WHERE invoice_total > 0
     GROUP BY internal_client_id
 ),
-case_assignment_base AS (
+invoice_summary AS (
     SELECT
         internal_client_id,
-        (SELECT REPLACE(note_text, E'\r', '') FROM b4t_clientnote WHERE internal_client_id = n.internal_client_id AND note_text ILIKE '%[CASE ASSIGNMENT]%' ORDER BY created_date DESC LIMIT 1) AS "CaseAssignmentNote"
-    FROM b4t_clientnote n
-    WHERE note_text ILIKE '%[CASE ASSIGNMENT]%'
+        SUM(single_invoice_total) as invoice_total
+    FROM (
+        SELECT
+            internal_client_id,
+            internal_invoice_id,
+            MAX(invoice_total) as single_invoice_total
+        FROM b4t_invoices
+        WHERE status = 'Finalized'
+        GROUP BY internal_client_id, internal_invoice_id
+    ) AS unique_invoices
     GROUP BY internal_client_id
+),
+invoice_payments AS (
+    SELECT
+        internal_client_id,
+        (SUM(COALESCE(credit, 0)) - SUM(COALESCE(debit, 0))) as total_payments
+    FROM b4t_payments
+    GROUP BY internal_client_id
+),
+last_payment_summary AS (
+    SELECT DISTINCT ON (internal_client_id)
+        internal_client_id,
+        pmt_amount AS last_payment_amount,
+        pmt_date AS last_payment_date
+    FROM b4t_payments
+    WHERE pmt_amount != 0
+    ORDER BY internal_client_id, pmt_date DESC, payment_id DESC
+),
+unbilled_time AS (
+    SELECT
+        t.internal_client_id,
+        SUM(COALESCE(t.calculated_amount, 0)) AS unbilled_time_amount
+    FROM b4t_timeentries t
+    WHERE t.status IN ('Ready For Billing', 'Ready For Summary', 'Pending Ticket Close')
+      AND t.entry_date IS NOT NULL
+      AND t.status != 'Deleted'
+    GROUP BY t.internal_client_id
+),
+unbilled_expenses AS (
+    SELECT
+        e.internal_client_id,
+        SUM(COALESCE(e.sell_price, 0)) AS unbilled_expense_amount
+    FROM b4t_expenses e
+    WHERE e.billing_status IN ('Ready For Billing', 'Ready For Summary', 'Pending Ticket Close')
+      AND e.expense_date IS NOT NULL
+    GROUP BY e.internal_client_id
+),
+trust_summary AS (
+    SELECT
+        internal_client_id,
+        -SUM(CASE WHEN pay_in = true THEN amount ELSE -amount END) AS trust_balance
+    FROM b4t_trustaccounting
+    WHERE (check_voided != true OR check_voided IS NULL)
+    GROUP BY internal_client_id
+),
+case_assignment_base AS (
+    SELECT DISTINCT ON (internal_client_id)
+        internal_client_id,
+        REPLACE(note_text, E'\r', '') AS "CaseAssignmentNote"
+    FROM b4t_clientnote
+    WHERE note_text ILIKE '%[CASE ASSIGNMENT]%'
+    ORDER BY internal_client_id, created_date DESC
 ),
 case_assignment_agg AS (
     SELECT
@@ -72,44 +138,43 @@ case_assignment_agg AS (
         )), '') AS "LastAttorneyFromNote"
     FROM case_assignment_base
 ),
-note_agg AS (
+note_tier_agg AS (
     SELECT
-        n.internal_client_id,
-        (SELECT string_agg('* ' || note_text, E'\n') FROM (SELECT note_text FROM b4t_clientnote WHERE internal_client_id = n.internal_client_id AND note_text ~ '\\[(T|TIER )[0-5]' ORDER BY created_date DESC) n2) AS "T_Notes",
-        (SELECT note_text FROM b4t_clientnote WHERE internal_client_id = n.internal_client_id ORDER BY created_date DESC LIMIT 1) AS "LatestNoteText"
-    FROM b4t_clientnote n
-    GROUP BY n.internal_client_id
+        internal_client_id,
+        string_agg('* ' || note_text, E'\n') AS "T_Notes"
+    FROM (
+        SELECT internal_client_id, note_text
+        FROM b4t_clientnote
+        WHERE note_text ~ '\\[(T|TIER )[0-5]'
+        ORDER BY created_date DESC
+    ) sub
+    GROUP BY internal_client_id
+),
+note_latest AS (
+    SELECT DISTINCT ON (internal_client_id)
+        internal_client_id, note_text AS "LatestNoteText"
+    FROM b4t_clientnote
+    ORDER BY internal_client_id, created_date DESC
 ),
 admin_welcome AS (
-    SELECT internal_client_id, created_date AS "AdminWelcomeDate", created_by AS "AdminWelcomeCall"
-    FROM (
-        SELECT
-            n.internal_client_id,
-            n.created_date,
-            n.created_by,
-            ROW_NUMBER() OVER (PARTITION BY n.internal_client_id ORDER BY n.created_date ASC) AS rn
-        FROM b4t_clientnote n
-        WHERE n.note_subject ILIKE '%Welcome%' OR n.note_text ILIKE '%Welcome%'
-    ) ranked_notes
-    WHERE rn = 1
+    SELECT DISTINCT ON (internal_client_id)
+        internal_client_id, created_date AS "AdminWelcomeDate", created_by AS "AdminWelcomeCall"
+    FROM b4t_clientnote
+    WHERE note_subject ILIKE '%Welcome%' OR note_text ILIKE '%Welcome%'
+    ORDER BY internal_client_id, created_date ASC
 ),
 atty_welcome AS (
-    SELECT internal_client_id, created_date AS "AttyWelcomeDate"
-    FROM (
-        SELECT
-            n.internal_client_id,
-            n.created_date,
-            ROW_NUMBER() OVER (PARTITION BY n.internal_client_id ORDER BY n.created_date ASC) AS rn
-        FROM b4t_clientnote n
-        WHERE (n.note_subject ILIKE '%Welcome%' OR n.note_text ILIKE '%Welcome%')
-          AND (
-              n.note_subject ILIKE '%Atty%'
-              OR n.note_subject ILIKE '%Attorney%'
-              OR n.note_text ILIKE '%Atty%'
-              OR n.note_text ILIKE '%Attorney%'
-          )
-    ) ranked_notes
-    WHERE rn = 1
+    SELECT DISTINCT ON (internal_client_id)
+        internal_client_id, created_date AS "AttyWelcomeDate"
+    FROM b4t_clientnote
+    WHERE (note_subject ILIKE '%Welcome%' OR note_text ILIKE '%Welcome%')
+      AND (
+          note_subject ILIKE '%Atty%'
+          OR note_subject ILIKE '%Attorney%'
+          OR note_text ILIKE '%Atty%'
+          OR note_text ILIKE '%Attorney%'
+      )
+    ORDER BY internal_client_id, created_date ASC
 )
 SELECT
     d.internal_client_id AS "ClientID",
@@ -134,17 +199,32 @@ SELECT
     aw."AdminWelcomeCall",
     aw."AdminWelcomeDate",
     tw."AttyWelcomeDate",
-    na."LatestNoteText" AS "CallNotes",
-    na."T_Notes" AS "T_ClientCare_Notes",
-    pa."Last5Amounts",
-    pa."Last5Dates"
+    nl."LatestNoteText" AS "CallNotes",
+    nt."T_Notes" AS "T_ClientCare_Notes",
+    pl5."Last5Amounts",
+    pl5."Last5Dates",
+    COALESCE(lps.last_payment_amount, 0) AS "LastPayment",
+    lps.last_payment_date AS "LastPaymentDate",
+    (COALESCE(ins.invoice_total, 0) - COALESCE(ip.total_payments, 0)) AS "OutstandingBalance",
+    COALESCE(ut.unbilled_time_amount, 0) + COALESCE(ue.unbilled_expense_amount, 0) AS "UnbilledBalance",
+    (COALESCE(ins.invoice_total, 0) - COALESCE(ip.total_payments, 0)) + 
+    (COALESCE(ut.unbilled_time_amount, 0) + COALESCE(ue.unbilled_expense_amount, 0)) AS "TotalBalance",
+    COALESCE(ts.trust_balance, 0) AS "TrustBalance"
 FROM b4t_clients d
 LEFT JOIN b4t_matters m ON d.internal_client_id = m.internal_client_id
 LEFT JOIN payment_agg pa ON d.internal_client_id = pa.internal_client_id
+LEFT JOIN payment_last_5 pl5 ON d.internal_client_id = pl5.internal_client_id
 LEFT JOIN first_payment fp ON d.internal_client_id = fp.internal_client_id
 LEFT JOIN invoice_agg inv ON d.internal_client_id = inv.internal_client_id
+LEFT JOIN invoice_summary ins ON d.internal_client_id = ins.internal_client_id
+LEFT JOIN invoice_payments ip ON d.internal_client_id = ip.internal_client_id
+LEFT JOIN last_payment_summary lps ON d.internal_client_id = lps.internal_client_id
+LEFT JOIN unbilled_time ut ON d.internal_client_id = ut.internal_client_id
+LEFT JOIN unbilled_expenses ue ON d.internal_client_id = ue.internal_client_id
+LEFT JOIN trust_summary ts ON d.internal_client_id = ts.internal_client_id
 LEFT JOIN case_assignment_agg ca ON d.internal_client_id = ca.internal_client_id
-LEFT JOIN note_agg na ON d.internal_client_id = na.internal_client_id
+LEFT JOIN note_tier_agg nt ON d.internal_client_id = nt.internal_client_id
+LEFT JOIN note_latest nl ON d.internal_client_id = nl.internal_client_id
 LEFT JOIN admin_welcome aw ON d.internal_client_id = aw.internal_client_id
 LEFT JOIN atty_welcome tw ON d.internal_client_id = tw.internal_client_id
 WHERE m.created_date >= '2023-01-01'
