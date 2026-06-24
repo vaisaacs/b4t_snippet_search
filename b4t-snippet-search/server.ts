@@ -30,11 +30,14 @@ const setupAuthTable = async () => {
     const adminPassword = process.env.ADMIN_PASSWORD;
     
     if (adminUsername && adminPassword) {
+      const pwdHash = hashPassword(adminPassword);
       const adminCheck = await pool.query('SELECT * FROM app_users WHERE username = $1', [adminUsername]);
       if (adminCheck.rows.length === 0) {
-        const pwdHash = hashPassword(adminPassword);
         await pool.query('INSERT INTO app_users (username, password_hash) VALUES ($1, $2)', [adminUsername, pwdHash]);
         console.log(`Admin user created from environment variables: ${adminUsername}`);
+      } else {
+        await pool.query('UPDATE app_users SET password_hash = $2 WHERE username = $1', [adminUsername, pwdHash]);
+        console.log(`Admin user password synchronized from environment variables.`);
       }
     } else {
       console.log("ADMIN_USERNAME or ADMIN_PASSWORD not provided. Skipping default admin user creation.");
