@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
-import { Copy, FileSpreadsheet, LayoutIcon, CheckSquare, Sparkles, Check, CheckCircle2 } from 'lucide-react';
+import { Copy, FileSpreadsheet, LayoutIcon, CheckSquare, Sparkles, Check, CheckCircle2, Download } from 'lucide-react';
 import { ClientRecord, ManualSnippetInputs } from '../types';
 import { formatCurrency, parseClientCareNotes } from '../utils';
+import { jsPDF } from 'jspdf';
 
 interface SnippetGeneratorProps {
   client: ClientRecord;
@@ -172,6 +173,33 @@ ${formatCareNoteSnippetList(parsedCare.t5)}`;
     setTimeout(() => setCopiedType(null), 2500);
   };
 
+  const handleExportPdf = () => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'letter'
+    });
+    
+    doc.setFontSize(10);
+    const splitText = doc.splitTextToSize(textDisplaySnippet, 530);
+    
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 40;
+    const lineHeight = 14;
+    let y = margin;
+
+    for (let i = 0; i < splitText.length; i++) {
+      if (y + lineHeight > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(splitText[i], margin, y);
+      y += lineHeight;
+    }
+    
+    doc.save(`${client.clientName.replace(/\s+/g, '_')}_Snippet_Log.pdf`);
+  };
+
   return (
     <div className="bg-slate-50 border border-slate-100 rounded-xl p-5 space-y-6">
       <div className="flex items-center justify-between border-b border-indigo-100/50 pb-3">
@@ -317,27 +345,37 @@ ${formatCareNoteSnippetList(parsedCare.t5)}`;
               Copies a beautiful, structured text report showing T1-T5 Client care notes and complete financial summaries sorted neatly.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => handleCopy(textDisplaySnippet, 'text')}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-xs ${
-              copiedType === 'text'
-                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-            }`}
-          >
-            {copiedType === 'text' ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Copied Snippet Log!
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                Copy Full Snippet Log
-              </>
-            )}
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleCopy(textDisplaySnippet, 'text')}
+              className={`w-full py-2 px-3 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-xs ${
+                copiedType === 'text'
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+              }`}
+            >
+              {copiedType === 'text' ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Copied Log!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy Text
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              className="w-full py-2 px-3 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export PDF
+            </button>
+          </div>
         </div>
       </div>
 
