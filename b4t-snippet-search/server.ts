@@ -105,6 +105,16 @@ async function startServer() {
       // Direct fast query to the pre-calculated reporting table
       const { rows } = await pool.query('SELECT * FROM dyn_snippet_search_master ORDER BY "Client Name" ASC');
       
+      let lastSync = null;
+      try {
+        const syncRes = await pool.query('SELECT last_sync FROM sync_metadata ORDER BY id DESC LIMIT 1');
+        if (syncRes.rows.length > 0) {
+          lastSync = syncRes.rows[0].last_sync;
+        }
+      } catch (err) {
+        // Table might not exist yet
+      }
+      
       // Map the PostgreSQL row columns to our frontend's expected properties
       const mappedRecords = rows.map(row => ({
         clientId: row['Client ID']?.toString() || row['client id']?.toString() || '',
@@ -135,7 +145,7 @@ async function startServer() {
         tClientCareNotes: row['T_ClientCare_Notes'] || row['t_clientcare_notes'] || ''
       }));
 
-      res.json(mappedRecords);
+      res.json({ records: mappedRecords, lastSync });
     } catch (err: any) {
       console.error('[Neon DB Sync Error]:', err);
       // Failsafe format so the frontend can catch it and display offline fallback
