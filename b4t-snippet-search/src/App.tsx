@@ -15,6 +15,7 @@ export default function App() {
   const [clients, setClients] = useState<ClientRecord[]>(DEMO_CLIENTS);
   const [selectedClientId, setSelectedClientId] = useState<string>(DEMO_CLIENTS[0].clientId);
   const [isLive, setIsLive] = useState(false);
+  const [lastSyncDate, setLastSyncDate] = useState<string | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
 
   // Maintain custom snippet templates inside active memory per-client
@@ -47,11 +48,15 @@ export default function App() {
 
         if (response.ok) {
           const data = await response.json();
-          if (active && Array.isArray(data) && data.length > 0) {
-            setClients(data);
-            setSelectedClientId(data[0].clientId);
+          const records = Array.isArray(data) ? data : data.records;
+          const syncTime = data.lastSync || null;
+          
+          if (active && Array.isArray(records) && records.length > 0) {
+            setClients(records);
+            setSelectedClientId(records[0].clientId);
             setIsLive(true);
-            console.log(`[Startup Connect] Successfully auto-fetched ${data.length} live records from Neon DB!`);
+            setLastSyncDate(syncTime);
+            console.log(`[Startup Connect] Successfully auto-fetched ${records.length} live records from Neon DB!`);
           }
         } else {
            console.warn('[Startup Connect] DB sync endpoint returned non-OK status. Fallback to demo data.');
@@ -131,10 +136,17 @@ export default function App() {
                     Checking pipeline...
                   </span>
                 ) : isLive ? (
-                  <span className="text-[9px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded flex items-center gap-1 font-medium animate-fade-in">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Live API Connected
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded flex items-center gap-1 font-medium animate-fade-in">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Live API Connected
+                    </span>
+                    {lastSyncDate && (
+                      <span className="text-[9px] text-slate-400 font-medium">
+                        Last Updated: {new Date(lastSyncDate).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <span className="text-[9px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded flex items-center gap-1 font-medium">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
