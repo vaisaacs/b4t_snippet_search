@@ -174,6 +174,9 @@ async function startServer() {
   // API endpoint to fetch the prepared report for disabled clients from Neon DB
   app.post('/api/bill4time/sync_disabled', async (req, res) => {
     try {
+      if (!process.env.NEON_DATABASE_URL_DISABLED) {
+        throw new Error('NEON_DATABASE_URL_DISABLED environment variable is not configured on the server.');
+      }
       const { rows } = await poolDisabled.query('SELECT * FROM dyn_snippet_disabled_clients ORDER BY "Client Name" ASC');
       
       let lastSync = null;
@@ -235,6 +238,9 @@ async function startServer() {
   // API endpoint to fetch the prepared report for in-office clients from Neon DB
   app.post('/api/bill4time/sync_inoffice', async (req, res) => {
     try {
+      if (!process.env.NEON_DATABASE_URL_INOFFICE) {
+        throw new Error('NEON_DATABASE_URL_INOFFICE environment variable is not configured on the server.');
+      }
       const { rows } = await poolInoffice.query('SELECT * FROM dyn_snippet_inoffice_clients ORDER BY "Client Name" ASC');
       
       let lastSync = null;
